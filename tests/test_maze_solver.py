@@ -48,6 +48,31 @@ class MazeSolverTests(unittest.TestCase):
         self.assertEqual(maze[2][2], 3)
         self.assertEqual((len(maze), len(maze[0])), (3, 3))
 
+    def test_first_line_may_contain_dimensions(self) -> None:
+        """A dimensions header should use the cell marked with 3 as the goal."""
+        contents = "(3, 4)\n[2, 0, 1, 1]\n[1, 0, 1, 1]\n[0, 0, 3, 1]\n"
+
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "maze.txt"
+            file_path.write_text(contents, encoding="utf-8")
+            maze = mazeToMatrix(file_path)
+
+        graph, start, goal = mazeToGraph(maze)
+        self.assertEqual(start, (0, 0))
+        self.assertEqual(goal, (2, 2))
+        self.assertEqual(graph.primero_anchura(start, goal)[-1], goal)
+
+    def test_dimensions_header_requires_one_marked_goal(self) -> None:
+        """Dimension-based files must identify exactly one goal cell."""
+        contents = "(2, 2)\n[2, 0]\n[0, 0]\n"
+
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "maze.txt"
+            file_path.write_text(contents, encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "exactly one goal"):
+                mazeToMatrix(file_path)
+
     def test_goal_cell_has_incoming_edges(self) -> None:
         """Walkable neighbours must connect to the goal cell."""
         graph, _start, goal = mazeToGraph(self.maze)

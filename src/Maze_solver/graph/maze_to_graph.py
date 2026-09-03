@@ -13,9 +13,10 @@ WALKABLE_VALUES = {0, 2, 3}
 def mazeToMatrix(file_path: str | Path) -> list[list[int]]:
     """Convert a maze text file into a matrix.
 
-    The first line contains the goal coordinate, not the maze dimensions. The
-    remaining lines contain the maze, using these values: 0 for free space, 1
-    for a wall, 2 for the start, and 3 for the goal.
+    The first line may contain either the goal coordinate or the maze
+    dimensions. The remaining lines contain the maze, using these values: 0
+    for free space, 1 for a wall, 2 for the start, and 3 for the goal. When the
+    first line contains dimensions, the goal must be marked with 3.
 
     Args:
         file_path: Path to the text file containing the maze.
@@ -35,20 +36,22 @@ def mazeToMatrix(file_path: str | Path) -> list[list[int]]:
         raise ValueError(f"Could not read maze file: {error}") from error
 
     if len(lines) < 2:
-        raise ValueError("The file must contain a goal coordinate and a maze.")
+        raise ValueError("The file must contain a header and a maze.")
 
     try:
-        goal_value = literal_eval(lines[0])
+        header_value = literal_eval(lines[0])
         maze = [list(literal_eval(line)) for line in lines[1:]]
     except (SyntaxError, ValueError, TypeError) as error:
         raise ValueError("The maze file contains invalid Python-style data.") from error
 
     if (
-        not isinstance(goal_value, tuple)
-        or len(goal_value) != 2
-        or not all(isinstance(value, int) for value in goal_value)
+        not isinstance(header_value, tuple)
+        or len(header_value) != 2
+        or not all(isinstance(value, int) for value in header_value)
     ):
-        raise ValueError("The first line must be a goal coordinate such as (17, 17).")
+        raise ValueError(
+            "The first line must contain dimensions or a goal coordinate."
+        )
 
     if not maze or not maze[0]:
         raise ValueError("The maze cannot be empty.")
@@ -62,10 +65,20 @@ def mazeToMatrix(file_path: str | Path) -> list[list[int]]:
 
     starts = _find_cells(maze, 2)
     marked_goals = _find_cells(maze, 3)
-    goal = goal_value
+    dimensions = (len(maze), column_count)
 
     if len(starts) != 1:
         raise ValueError("The maze must contain exactly one start cell (2).")
+
+    if header_value == dimensions:
+        if len(marked_goals) != 1:
+            raise ValueError(
+                "A maze with dimensions in the first line must contain "
+                "exactly one goal cell (3)."
+            )
+        goal = marked_goals[0]
+    else:
+        goal = header_value
 
     if not (0 <= goal[0] < len(maze) and 0 <= goal[1] < column_count):
         raise ValueError("The goal coordinate is outside the maze.")
@@ -76,7 +89,7 @@ def mazeToMatrix(file_path: str | Path) -> list[list[int]]:
     if marked_goals and marked_goals != [goal]:
         raise ValueError("The first-line goal does not match the cell marked with 3.")
 
-    # The first line is authoritative, even if the matrix uses 0 at the goal.
+    # A coordinate header is authoritative even if its matrix cell uses 0.
     maze[goal[0]][goal[1]] = 3
     return maze
 
