@@ -17,17 +17,22 @@ class SearchResult:
 
 
 class Grafo:
-    """Represent an unweighted graph with an adjacency list."""
+    """Represent a weighted graph with an adjacency list."""
 
     def __init__(self) -> None:
         """Create an empty graph."""
         self.lista_adyacencia: dict[Coordinate, set[Coordinate]] = {}
+        self.pesos_aristas: dict[tuple[Coordinate, Coordinate], int] = {}
 
     def __repr__(self) -> str:
         """Return a readable representation of the adjacency list."""
         lines = []
         for node, neighbours in self.lista_adyacencia.items():
-            lines.append(f"{node} -> {sorted(neighbours)}")
+            weighted_neighbours = [
+                (neighbour, self.obtener_peso(node, neighbour))
+                for neighbour in sorted(neighbours)
+            ]
+            lines.append(f"{node} -> {weighted_neighbours}")
         return "\n".join(lines)
 
     def add_node(self, node: Coordinate) -> None:
@@ -35,15 +40,28 @@ class Grafo:
         if node not in self.lista_adyacencia:
             self.lista_adyacencia[node] = set()
 
-    def add_edge(self, from_node: Coordinate, to_node: Coordinate) -> None:
-        """Add a directed edge with an implicit cost of one."""
+    def add_edge(
+        self, from_node: Coordinate, to_node: Coordinate, weight: int = 1
+    ) -> None:
+        """Add a directed edge and its positive integer weight."""
+        if weight <= 0:
+            raise ValueError("Edge weights must be positive.")
+
         self.add_node(from_node)
         self.add_node(to_node)
         self.lista_adyacencia[from_node].add(to_node)
+        edge = (from_node, to_node)
+        self.pesos_aristas[edge] = min(
+            weight, self.pesos_aristas.get(edge, weight)
+        )
 
     def obtener_vecinos(self, node: Coordinate) -> set[Coordinate]:
         """Return the neighbours of a node."""
         return self.lista_adyacencia.get(node, set())
+
+    def obtener_peso(self, from_node: Coordinate, to_node: Coordinate) -> int:
+        """Return the weight of an existing directed edge."""
+        return self.pesos_aristas[(from_node, to_node)]
 
     def h(self, current: Coordinate, goal: Coordinate) -> int:
         """Calculate Manhattan distance from a node to the goal."""
@@ -116,7 +134,7 @@ class Grafo:
     def a_star_search_details(
         self, start: Coordinate, goal: Coordinate
     ) -> SearchResult:
-        """Run A* using unit movement costs and Manhattan distance."""
+        """Run A* using edge weights and Manhattan distance."""
         open_nodes = {start}
         closed_nodes: set[Coordinate] = set()
         parents: dict[Coordinate, Optional[Coordinate]] = {start: None}
@@ -141,7 +159,9 @@ class Grafo:
                 if neighbour in closed_nodes:
                     continue
 
-                new_cost = real_cost[current] + 1
+                new_cost = real_cost[current] + self.obtener_peso(
+                    current, neighbour
+                )
                 if neighbour not in real_cost or new_cost < real_cost[neighbour]:
                     real_cost[neighbour] = new_cost
                     parents[neighbour] = current

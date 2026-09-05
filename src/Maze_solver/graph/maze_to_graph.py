@@ -157,11 +157,13 @@ def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
 
     return graph, starts[0], goals[0]
 
-def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
-    """Convert a maze matrix into a graph and find its start and goal.
+def mazeToMacroGraph(
+    maze: list[list[int]],
+) -> tuple[Grafo, Coordinate, Coordinate]:
+    """Convert a maze matrix into a weighted macro graph.
 
-    Only real bifurcations, the start, and the goal become graph nodes.
-    Cells along a corridor are skipped when connecting those nodes.
+    Only bifurcations, dead ends, the start, and the goal become graph nodes.
+    A corridor becomes one edge whose weight is its number of steps.
 
     Args:
         maze: Rectangular maze matrix.
@@ -213,9 +215,9 @@ def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
     for row in range(row_count):
         for column in range(column_count):
             coordinate = (row, column)
-            if (
-                maze[row][column] in WALKABLE_VALUES
-                and len(walkable_neighbours(coordinate)) > 2
+            neighbour_count = len(walkable_neighbours(coordinate))
+            if maze[row][column] in WALKABLE_VALUES and (
+                neighbour_count == 1 or neighbour_count > 2
             ):
                 nodes.add(coordinate)
 
@@ -226,6 +228,7 @@ def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
         for neighbour in walkable_neighbours(node):
             previous = node
             current = neighbour
+            steps = 1
 
             while current not in nodes:
                 next_cells = [
@@ -236,9 +239,117 @@ def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
                 if len(next_cells) != 1:
                     break
                 previous, current = current, next_cells[0]
+                steps += 1
 
             if current in nodes and current != node:
-                graph.add_edge(node, current)
+                graph.add_edge(node, current, steps)
 
-    print(graph)
     return graph, start, goal
+
+
+def expandMacroPath(
+    maze: list[list[int]], compact_path: list[Coordinate]
+) -> list[Coordinate]:
+    """Expand a macro-graph path into every traversed maze coordinate.
+
+    Args:
+        maze: Rectangular maze matrix used to create the macro graph.
+        compact_path: Sequence of decision nodes returned by a graph search.
+
+    Returns:
+        A continuous path containing the decision nodes and all corridor cells.
+
+    Raises:
+        ValueError: If the maze is invalid or two consecutive decision nodes
+            are not connected by a corridor.
+    """
+    if not compact_path:
+        return []
+
+    if not maze or not maze[0]:
+        raise ValueError("The maze cannot be empty.")
+
+    row_count = len(maze)
+    column_count = len(maze[0])
+    if any(len(row) != column_count for row in maze):
+        raise ValueError("All maze rows must have the same number of columns.")
+
+    def walkable_neighbours(coordinate: Coordinate) -> list[Coordinate]:
+        row, column = coordinate
+        neighbours = []
+
+        for next_row, next_column in (
+            (row - 1, column),
+            (row, column + 1),
+            (row + 1, column),
+            (row, column - 1),
+        ):
+            inside_maze = (
+                0 <= next_row < row_count and 0 <= next_column < column_count
+            )
+            if inside_maze and maze[next_row][next_column] in WALKABLE_VALUES:
+                neighbours.append((next_row, next_column))
+
+        return neighbours
+
+    for coordinate in compact_path:
+        row, column = coordinate
+        inside_maze = 0 <= row < row_count and 0 <= column < column_count
+        if not inside_maze or maze[row][column] not in WALKABLE_VALUES:
+            raise ValueError(f"Invalid macro-path node: {coordinate}.")
+
+    macro_nodes = set()
+    for row in range(row_count):
+        for column in range(column_count):
+            coordinate = (row, column)
+            if maze[row][column] not in WALKABLE_VALUES:
+                continue
+
+            neighbour_count = len(walkable_neighbours(coordinate))
+            if (
+                maze[row][column] in {2, 3}
+                or neighbour_count == 1
+                or neighbour_count > 2
+            ):
+                macro_nodes.add(coordinate)
+
+    expanded_path = [compact_path[0]]
+
+    for parent, child in zip(compact_path, compact_path[1:]):
+        if parent == child:
+            continue
+
+        possible_corridors = []
+
+        for neighbour in walkable_neighbours(parent):
+            corridor = [parent, neighbour]
+            previous = parent
+            current = neighbour
+
+            while current not in macro_nodes:
+                next_cells = [
+                    coordinate
+                    for coordinate in walkable_neighbours(current)
+                    if coordinate != previous
+                ]
+                if len(next_cells) != 1:
+                    break
+
+                previous, current = current, next_cells[0]
+                if current in corridor:
+                    break
+                corridor.append(current)
+
+            if current == child:
+                possible_corridors.append(corridor)
+
+        if not possible_corridors:
+            raise ValueError(
+                f"Macro nodes {parent} and {child} are not connected "
+                "by a corridor."
+            )
+
+        corridor = min(possible_corridors, key=len)
+        expanded_path.extend(corridor[1:])
+
+    return expanded_path
