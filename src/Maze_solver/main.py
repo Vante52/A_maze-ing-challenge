@@ -72,6 +72,7 @@ class MazeApp:
         self.rectangles: dict[Coordinate, int] = {}
         self.animation_id: str | None = None
         self.algorithm_buttons: list[ttk.Button] = []
+        print(self.graph)
 
         self._create_widgets()
 

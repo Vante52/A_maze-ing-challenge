@@ -156,3 +156,89 @@ def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
                     graph.add_edge(current, (next_row, next_column))
 
     return graph, starts[0], goals[0]
+
+def mazeToGraph(maze: list[list[int]]) -> tuple[Grafo, Coordinate, Coordinate]:
+    """Convert a maze matrix into a graph and find its start and goal.
+
+    Only real bifurcations, the start, and the goal become graph nodes.
+    Cells along a corridor are skipped when connecting those nodes.
+
+    Args:
+        maze: Rectangular maze matrix.
+
+    Returns:
+        A tuple containing the graph, start coordinate, and goal coordinate.
+
+    Raises:
+        ValueError: If the matrix does not contain one start and one goal.
+    """
+    if not maze or not maze[0]:
+        raise ValueError("The maze cannot be empty.")
+
+    column_count = len(maze[0])
+    if any(len(row) != column_count for row in maze):
+        raise ValueError("All maze rows must have the same number of columns.")
+
+    starts = _find_cells(maze, 2)
+    goals = _find_cells(maze, 3)
+
+    if len(starts) != 1 or len(goals) != 1:
+        raise ValueError("The maze must contain exactly one start and one goal.")
+
+    graph = Grafo()
+    row_count = len(maze)
+
+    def walkable_neighbours(coordinate: Coordinate) -> list[Coordinate]:
+        row, column = coordinate
+        neighbours = []
+
+        for next_row, next_column in (
+            (row - 1, column),
+            (row, column + 1),
+            (row + 1, column),
+            (row, column - 1),
+        ):
+            inside_maze = (
+                0 <= next_row < row_count and 0 <= next_column < column_count
+            )
+            if inside_maze and maze[next_row][next_column] in WALKABLE_VALUES:
+                neighbours.append((next_row, next_column))
+
+        return neighbours
+
+    start = starts[0]
+    goal = goals[0]
+    nodes = {start, goal}
+
+    for row in range(row_count):
+        for column in range(column_count):
+            coordinate = (row, column)
+            if (
+                maze[row][column] in WALKABLE_VALUES
+                and len(walkable_neighbours(coordinate)) > 2
+            ):
+                nodes.add(coordinate)
+
+    for node in nodes:
+        graph.add_node(node)
+
+    for node in nodes:
+        for neighbour in walkable_neighbours(node):
+            previous = node
+            current = neighbour
+
+            while current not in nodes:
+                next_cells = [
+                    coordinate
+                    for coordinate in walkable_neighbours(current)
+                    if coordinate != previous
+                ]
+                if len(next_cells) != 1:
+                    break
+                previous, current = current, next_cells[0]
+
+            if current in nodes and current != node:
+                graph.add_edge(node, current)
+
+    print(graph)
+    return graph, start, goal
